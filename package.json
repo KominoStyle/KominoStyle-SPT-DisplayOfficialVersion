@@ -1,0 +1,30 @@
+{
+    "name": "displayofficialversion",
+    "version": "1.0.0",
+    "main": "src/mod.js",
+    "type": "commonjs",
+    "license": "MIT",
+    "author": "!♥Koͨmͧiͭnͥoͤ Style♥!",
+    "akiVersion": "*",
+    "scripts": {
+        "setup": "npm i",
+        "build": "node ./packageBuild.ts"
+    },
+    "devDependencies": {
+        "@types/fs-extra": "^11.0.1",
+        "@types/glob": "^8.1.0",
+        "@types/node": "^16.18.10",
+        "@typescript-eslint/eslint-plugin": "5.46.1",
+        "@typescript-eslint/parser": "5.46.1",
+        "bestzip": "2.2.1",
+        "eslint": "8.30.0",
+        "fs-extra": "11.1.0",
+        "glob": "8.0.3",
+        "ts-node": "^10.9.1",
+        "tsyringe": "4.7.0",
+        "typescript": "4.9.4"
+    },
+    "dependencies": {
+        "site-utils": "^1.0.17"
+    }
+}
