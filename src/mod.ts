@@ -1,5 +1,9 @@
 import { Site } from "site-utils"
 import loggerConfig from "./data/json/loggerConfig.json"
+import modData from "./data/json/modData.json"
+import fs from "fs"
+import path from "path"
+import os from "os"
 
 import { IPreAkiLoadModAsync } from "@spt-aki/models/external/IPreAkiLoadModAsync"
 import { DependencyContainer } from "tsyringe"
@@ -13,12 +17,17 @@ import { LogBackgroundColor } from "@spt-aki/models/spt/logging/LogBackgroundCol
 
 class EditGameVersion implements IPreAkiLoadModAsync {
 
-    private async getGameVersion(logger: ILogger): Promise<string> {
+    private async getGameVersion(logger: ILogger, hasEthernet: boolean): Promise<string> {
+        let currentVersion = ""
+
+        if (!hasEthernet) {
+            return modData.OfflineGameVersion
+        }
+
         // const { default: Site } = await import("site-utils") // Use dynamic import to load site-utils as ES module
         const url = "https://escapefromtarkov.fandom.com/wiki/Changelog"
         const document = await Site.getDocument(url)
         const getCurrentGameVersion = document.querySelector("strong.mw-selflink.selflink")?.textContent
-        let currentVersion = ""
         if (getCurrentGameVersion === null || getCurrentGameVersion === undefined) {
             if (loggerConfig.DevLogger) logger.warning("Could not find the current game version")
         } else {
@@ -30,7 +39,45 @@ class EditGameVersion implements IPreAkiLoadModAsync {
                 if (loggerConfig.SuccessLogger) logger.success(`Found latest game version by EFT-Wiki \nLatest version: ${currentVersion} Beta version`)
             }
         }
+        // Update the offlineGameVersion.json file with the latest version
+        if (currentVersion) {
+            this.updateOfflineGameVersion(currentVersion)
+        }
+
         return currentVersion
+    }
+
+    private async updateOfflineGameVersion(newVersion: string) {
+        const modDataPath = path.join(__dirname, "./data/json/modData.json")
+
+        // Update the specific key
+        modData.OfflineGameVersion = newVersion
+
+        // Write the modified JSON data back to the file
+        await fs.promises.writeFile(modDataPath, JSON.stringify(modData, null, 4))
+    }
+
+    private async checkModVersion(logger: ILogger, hasEthernet: boolean) {
+        const modVersion = modData.ModVersion
+
+        if (!hasEthernet) {
+            return
+        }
+
+        // const { default: Site } = await import("site-utils") // Use dynamic import to load site-utils as ES module
+        const url = "https://hub.sp-tarkov.com/files/file/1134-display-official-version/"
+        const document = await Site.getDocument(url)
+        const getCurrentModVersion = document.querySelector('.filebaseVersionNumber')?.textContent
+        if (getCurrentModVersion === null || getCurrentModVersion === undefined) {
+            if (loggerConfig.DevLogger) logger.warning("Could not find the current game version")
+        } else {
+            const parsedVersion = getCurrentModVersion.match(/\d\.*.*/g)?.[0]
+            if (parsedVersion === undefined) {
+                if (loggerConfig.DevLogger) logger.warning("Could not match the current game version with Regex")
+            } else {
+                if (loggerConfig.SuccessLogger && (modVersion != parsedVersion)) logger.success(`NEW MOD VERSION`)
+            }
+        }
     }
 
     public async preAkiLoadAsync(container: DependencyContainer): Promise<void> {
@@ -47,19 +94,32 @@ class EditGameVersion implements IPreAkiLoadModAsync {
         // log the original Aki-Version + ProjectName
         if (loggerConfig.DevLogger) logger.info(`here is the original SPT: \nakiVersion: ${coreConfig.akiVersion} \nprojectName: ${coreConfig.projectName}`)
 
-        //get to official version.
-        const isBetaVersion = "Beta version"
-        const getCurrentGameVersion = await this.getGameVersion(logger)
+        // Check for an active Ethernet connection
+        const networkInterfaces = os.networkInterfaces()
+        const hasEthernet = Object.keys(networkInterfaces).some((interfaceName) => {
+            const networkInterface = networkInterfaces[interfaceName]
+            if (networkInterface) {
+                return networkInterface.some((iface) => iface.family === "IPv4" && iface.internal === false)
+            }
+            return false
+        })
 
-        //change to current game version
+        // check for latest Mod Version
+        await this.checkModVersion(logger, hasEthernet)
+
+        // get to official version.
+        const isBetaVersion = "Beta version"
+        const getCurrentGameVersion = await this.getGameVersion(logger, hasEthernet)
+
+        // change to current game version
         coreConfig.akiVersion = isBetaVersion
         coreConfig.projectName = getCurrentGameVersion
 
         // DevLogger checks new game version
         if (loggerConfig.DevLogger) logger.info(`here is the changed SPT: \nakiVersion: ${coreConfig.akiVersion} \nprojectName: ${coreConfig.projectName}`)
-        if (loggerConfig.SuccessLogger)  logger.log(`We changed the SPT-AKI version back to the latest verion: ${coreConfig.projectName} ${coreConfig.akiVersion}`, LogTextColor.MAGENTA, LogBackgroundColor.BLACK)
+        if (loggerConfig.SuccessLogger) logger.log(`We changed the SPT-AKI version back to the latest version: ${coreConfig.projectName} ${coreConfig.akiVersion}`, LogTextColor.MAGENTA, LogBackgroundColor.BLACK)
 
-        return 
+        return
     }
 }
 
