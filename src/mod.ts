@@ -4,6 +4,7 @@ import modData from "./data/json/modData.json"
 import fs from "fs"
 import path from "path"
 import os from "os"
+import dns from "dns"
 
 import { IPreAkiLoadModAsync } from "@spt-aki/models/external/IPreAkiLoadModAsync"
 import { DependencyContainer } from "tsyringe"
@@ -80,6 +81,31 @@ class EditGameVersion implements IPreAkiLoadModAsync {
         }
     }
 
+    private async hasActiveInternetConnection(logger: ILogger): Promise<boolean> {
+        return new Promise((resolve) => {
+            dns.lookup('example.com', (err) => {
+                if (err && err.code === 'ENOTFOUND') {
+                    if (loggerConfig.DevLogger) logger.info('No internet connection')
+                    resolve(false) // No internet connection
+                } else {
+                    resolve(true) // Internet connection is available
+                    if (loggerConfig.DevLogger) logger.info('Internet connection is available')
+                }
+            })
+        })
+    }
+
+    private hasActiveEthernetConnection(networkInterfaces: NodeJS.Dict<os.NetworkInterfaceInfo[]>) {
+        const hasEthernet = Object.keys(networkInterfaces).some((interfaceName) => {
+            const networkInterface = networkInterfaces[interfaceName]
+            if (networkInterface) {
+                return networkInterface.some((iface) => (iface.family === "IPv4" || iface.family === 'IPv6') && iface.internal === false)
+            }
+            return false
+        })
+        return hasEthernet
+    }
+
     public async preAkiLoadAsync(container: DependencyContainer): Promise<void> {
         // get logger
         const logger = container.resolve<ILogger>("WinstonLogger")
@@ -94,15 +120,17 @@ class EditGameVersion implements IPreAkiLoadModAsync {
         // log the original Aki-Version + ProjectName
         if (loggerConfig.DevLogger) logger.info(`here is the original SPT: \nakiVersion: ${coreConfig.akiVersion} \nprojectName: ${coreConfig.projectName}`)
 
-        // Check for an active Ethernet connection
-        const networkInterfaces = os.networkInterfaces()
-        const hasEthernet = Object.keys(networkInterfaces).some((interfaceName) => {
-            const networkInterface = networkInterfaces[interfaceName]
-            if (networkInterface) {
-                return networkInterface.some((iface) => iface.family === "IPv4" && iface.internal === false)
+        // Check for an active internet connection
+        let hasEthernet = false
+        try {
+            const hasActiveInternet = await this.hasActiveInternetConnection(logger)
+            if (hasActiveInternet) {
+                const networkInterfaces = os.networkInterfaces()
+                hasEthernet = this.hasActiveEthernetConnection(networkInterfaces)
             }
-            return false
-        })
+        } catch (error) {
+            logger.error('An error occurred while checking internet connectivity:', error)
+        }
 
         // check for latest Mod Version
         await this.checkModVersion(logger, hasEthernet)
