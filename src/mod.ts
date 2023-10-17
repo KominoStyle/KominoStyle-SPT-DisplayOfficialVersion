@@ -58,6 +58,8 @@ class EditGameVersion implements IPreAkiLoadModAsync {
         await fs.promises.writeFile(modDataPath, JSON.stringify(modData, null, 4))
     }
 
+
+
     private async checkModVersion(logger: ILogger, hasEthernet: boolean) {
         const modVersion = modData.ModVersion
 
@@ -81,15 +83,31 @@ class EditGameVersion implements IPreAkiLoadModAsync {
         }
     }
 
-    private async hasActiveInternetConnection(logger: ILogger): Promise<boolean> {
+    private async hasResponseOk(logger: ILogger): Promise<boolean> {
+        try {
+            const response = await fetch('https://www.google.com', { method: 'HEAD' })
+            if (response.ok) {
+                if (loggerConfig.DevLogger) logger.info('Response: '+'Internet connection is available')
+                return true
+            } else {
+                if (loggerConfig.DevLogger) logger.info('Response: '+'No internet connection')
+                return false
+            }
+        } catch (error) {
+            if (loggerConfig.DevLogger) logger.error('Response: '+'Error occurred while checking internet connectivity', error)
+            return false
+        }
+    }
+
+    private async dnsLookUpENOTFOUND(logger: ILogger): Promise<boolean> {
         return new Promise((resolve) => {
             dns.lookup('example.com', (err) => {
                 if (err && err.code === 'ENOTFOUND') {
-                    if (loggerConfig.DevLogger) logger.info('No internet connection')
+                    if (loggerConfig.DevLogger) logger.info('DNS: '+'No internet connection')
                     resolve(false) // No internet connection
                 } else {
                     resolve(true) // Internet connection is available
-                    if (loggerConfig.DevLogger) logger.info('Internet connection is available')
+                    if (loggerConfig.DevLogger) logger.info('DNS: '+'Internet connection is available')
                 }
             })
         })
@@ -123,8 +141,9 @@ class EditGameVersion implements IPreAkiLoadModAsync {
         // Check for an active internet connection
         let hasEthernet = false
         try {
-            const hasActiveInternet = await this.hasActiveInternetConnection(logger)
-            if (hasActiveInternet) {
+            const hasDnsTrue = await this.dnsLookUpENOTFOUND(logger)
+            const hasResponseTrue = await this.hasResponseOk(logger)
+            if (hasDnsTrue || hasResponseTrue) {
                 const networkInterfaces = os.networkInterfaces()
                 hasEthernet = this.hasActiveEthernetConnection(networkInterfaces)
             }
